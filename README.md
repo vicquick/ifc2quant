@@ -1,8 +1,14 @@
+<p align="center">
+  <img src="assets/filipp-romanovski-pOlwrv3yxWI-unsplash.jpg" alt="IFC Comparison Tool Banner" width="450"/>
+</p>
+
 # IFC Comparison Tool
 
 ## Description
 
 This tool provides functionality for processing and comparing IFC (Industry Foundation Classes) files. It allows for efficient extraction, transformation, caching, and comparison of IFC data, with results exportable to CSV and Excel formats.
+
+The project uses [Ifcopenshell](https://ifcopenshell.org) — an open-source Python framework for working with IFC files.
 
 ## Features
 

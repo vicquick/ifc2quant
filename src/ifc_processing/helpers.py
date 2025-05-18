@@ -272,6 +272,3 @@ def add_mm_suffix(df: pd.DataFrame) -> pd.DataFrame:
         if unit == "mm" and key in df.columns:
             rename_map[key] = f"{key} (mm)"
     return df.rename(columns=rename_map)
-
-
-

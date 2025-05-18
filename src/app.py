@@ -1,15 +1,14 @@
-
 import streamlit as st
 from pathlib import Path
 import pandas as pd
 import ifcopenshell
 
-from cache.manager            import CacheManager
+from cache.manager import CacheManager
 from ifc_processing.transform import aggregate
-from comparison.core          import compare_models, prepare_comparison_data
-from comparison.excel         import export_comparison_to_excel
-from comparison.csv           import export_comparison_to_csv
-from utils.file_io            import safe_write_bytes, ensure_directory
+from comparison.core import compare_models, prepare_comparison_data
+from comparison.excel import export_comparison_to_excel
+from comparison.csv import export_comparison_to_csv
+from utils.file_io import safe_write_bytes, ensure_directory
 
 # Cache & Session
 cache = CacheManager()
@@ -39,7 +38,7 @@ if st.button("1 · AUSWERTEN – Modell A") and up_a:
 if (mA := st.session_state.get("model_a")):
     st.subheader(f"1. Export – „{mA['name']}“")
     cats = sorted(mA["df"]["Kategorie"].unique())
-    sel_cat  = st.multiselect("Kategorien filtern", cats, default=cats)
+    sel_cat = st.multiselect("Kategorien filtern", cats, default=cats)
 
     all_cols = [c for c in mA["df"].columns if c not in ("Kategorie", "Gruppe")]
     sel_cols = st.multiselect("Spalten wählen", all_cols, default=all_cols)
@@ -51,9 +50,11 @@ if (mA := st.session_state.get("model_a")):
     )
     preview_df = preview_df.dropna(subset=sel_cols, how="all")
 
+    text_cols = ["Status", "Art", "Gruppe", "Kategorie"]
+
     for col in sel_cols:
-        # Skip known non-numeric columns
-        if col in ("Status", "Art", "Gruppe", "Kategorie"):
+        if col == "Kostengruppe Beschreibung":
+            preview_df[col] = preview_df[col].astype(str).replace("nan", "")
             continue
 
         try:
@@ -61,19 +62,20 @@ if (mA := st.session_state.get("model_a")):
         except:
             continue
 
-        if col in ("Stückzahl", "Kostengruppe"):
+        if col in ("Stückzahl", "Kostengruppe", "Anzahl Stufen", "Anzahl Pflanzen"):
             preview_df[col] = preview_df[col].apply(
-                lambda x: f"{int(x)}" if pd.notna(x) and x == int(x) else (f"{x:.1f}".replace(".", ",") if pd.notna(x) and x != 0 else "")
+                lambda x: f"{int(x)}" if pd.notna(x) and x == int(x) and x != 0 else (f"{x:.1f}".replace(".", ",") if pd.notna(x) and x != 0 else "")
             )
+        elif col in text_cols:
+            continue
         else:
             preview_df[col] = preview_df[col].apply(
                 lambda x: f"{x:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".") if pd.notna(x) and x != 0 else ""
             )
 
-    # Final cleanup for NaNs
     preview_df = preview_df.fillna("")
+    preview_df = preview_df.loc[:, (preview_df != "").any()]
 
-    # Info message about unit conversion
     if convert_mm:
         st.markdown("ℹ️ Alle Längenfelder wurden von **mm → m** umgerechnet.")
     else:
@@ -109,7 +111,7 @@ if (mB := st.session_state.get("model_b")):
         df_a[col] = pd.to_numeric(df_a[col], errors="coerce").fillna(0)
         df_b[col] = pd.to_numeric(df_b[col], errors="coerce").fillna(0)
 
-    merged     = compare_models(df_a, df_b)
+    merged = compare_models(df_a, df_b)
     compare_df = prepare_comparison_data(merged, num_cols)
 
     st.dataframe(compare_df, use_container_width=True)

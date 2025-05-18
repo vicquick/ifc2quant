@@ -37,6 +37,8 @@ ifc_comparison_tool/
     ├── ifc_processing/
     │   ├── helpers.py          # IFC processing helpers
     │   ├── transform.py        # IFC transformations
+    │   ├── mappings/           # Folder for mapping definitions
+    │   │   └── ll_am.json      # Definitions for LL-AM fields
     │   └── __init__.py
     └── utils/
         ├── file_io.py          # File I/O utilities

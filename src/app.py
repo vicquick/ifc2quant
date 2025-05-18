@@ -1,136 +1,144 @@
+
 import streamlit as st
 from pathlib import Path
 import pandas as pd
 import ifcopenshell
-from cache.manager import CacheManager
-from ifc_processing.transform import aggregate, to_dataframe
-from ifc_processing.helpers import auto_scale, DISPLAY_NAMES
-from comparison.core import compare_models, prepare_comparison_data
-from comparison.excel import export_comparison_to_excel
-from comparison.csv import export_comparison_to_csv
-from utils.file_io import safe_write_bytes, ensure_directory
 
-# Initialize cache and downloads directory
+from cache.manager            import CacheManager
+from ifc_processing.transform import aggregate
+from comparison.core          import compare_models, prepare_comparison_data
+from comparison.excel         import export_comparison_to_excel
+from comparison.csv           import export_comparison_to_csv
+from utils.file_io            import safe_write_bytes, ensure_directory
+
+# Cache & Session
 cache = CacheManager()
 cache.setup()
-
-# Session state initialization
 for k in ("model_a", "model_b"):
     st.session_state.setdefault(k, {})
 
-st.title("IFC-Mengenexport & Vergleich")
+st.title("IFC-Mengensummen & Δ-Vergleich (LL AM)")
 
-# ══════════ 1) Load Model A ════════════════════════════════════════════════
+# Toggle for unit conversion
+st.session_state.setdefault("convert_mm", True)
+convert_mm = st.checkbox("🔁 Längeneinheiten: mm → m umrechnen", value=st.session_state["convert_mm"])
+st.session_state["convert_mm"] = convert_mm
+
+# Model A
 up_a = st.file_uploader("IFC A auswählen", type=["ifc"], key="up_a")
-
-if st.button("1. AUSWERTEN – Modell A") and up_a:
-    # Clear previous cache and downloads
+if st.button("1 · AUSWERTEN – Modell A") and up_a:
     cache.clear()
-
-    # Save uploaded IFC to cache
-    tmp_a = cache.cache_dir / "temp_a.ifc"
+    tmp_a = cache.cache_dir / "model_a.ifc"
     safe_write_bytes(tmp_a, up_a.getbuffer())
-
     with st.spinner("IFC A wird ausgewertet …"):
-        ifc_a = ifcopenshell.open(str(tmp_a))
-        scale_a = auto_scale(ifc_a)
-        groups_a, bqa, psets_a = aggregate(ifc_a, scale_a)
-        df_a = to_dataframe(groups_a, bqa + psets_a)
-
-    st.session_state["model_a"] = dict(
-        name=Path(up_a.name).stem,
-        groups=groups_a,
-        bq=bqa,
-        psets=psets_a,
-        df=df_a
-    )
+        df_a = aggregate(ifcopenshell.open(str(tmp_a)), convert_mm_to_m=convert_mm)
+    st.session_state["model_a"] = {"name": Path(up_a.name).stem, "df": df_a}
     st.success("Modell A geladen!")
 
-# ───────── Export Configuration for Model A ────────────────────────────────
+# Export Model A
 if (mA := st.session_state.get("model_a")):
-    st.subheader(f"1. Export für „{mA['name']}“")
-    cats = sorted(mA["df"].index.get_level_values(0).unique())
-    sel_cat = st.multiselect("Kategorien", cats, default=cats)
-    sel_bq = st.multiselect("Base-Quantities", mA["bq"], default=mA["bq"])
-    sel_psets = st.multiselect("Pset Properties", mA["psets"], default=mA["psets"])
+    st.subheader(f"1. Export – „{mA['name']}“")
+    cats = sorted(mA["df"]["Kategorie"].unique())
+    sel_cat  = st.multiselect("Kategorien filtern", cats, default=cats)
 
-    preview_df = mA["df"].loc[pd.IndexSlice[sel_cat, :], :]
-    st.dataframe(preview_df)
+    all_cols = [c for c in mA["df"].columns if c not in ("Kategorie", "Gruppe")]
+    sel_cols = st.multiselect("Spalten wählen", all_cols, default=all_cols)
+
+    preview_df = (
+        mA["df"]
+        .query("Kategorie in @sel_cat")[["Kategorie", "Gruppe", *sel_cols]]
+        .copy()
+    )
+    preview_df = preview_df.dropna(subset=sel_cols, how="all")
+
+    for col in sel_cols:
+        # Skip known non-numeric columns
+        if col in ("Status", "Art", "Gruppe", "Kategorie"):
+            continue
+
+        try:
+            preview_df[col] = pd.to_numeric(preview_df[col], errors="coerce")
+        except:
+            continue
+
+        if col in ("Stückzahl", "Kostengruppe"):
+            preview_df[col] = preview_df[col].apply(
+                lambda x: f"{int(x)}" if pd.notna(x) and x == int(x) else (f"{x:.1f}".replace(".", ",") if pd.notna(x) and x != 0 else "")
+            )
+        else:
+            preview_df[col] = preview_df[col].apply(
+                lambda x: f"{x:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".") if pd.notna(x) and x != 0 else ""
+            )
+
+    # Final cleanup for NaNs
+    preview_df = preview_df.fillna("")
+
+    # Info message about unit conversion
+    if convert_mm:
+        st.markdown("ℹ️ Alle Längenfelder wurden von **mm → m** umgerechnet.")
+    else:
+        st.markdown("ℹ️ Längen bleiben in **mm**.")
+
+    st.dataframe(preview_df, use_container_width=True)
 
     if st.button("CSV A herunterladen"):
-        out = cache.download_dir / f"{mA['name']}_Mengenzusammenfassung.csv"
+        out = cache.download_dir / f"{mA['name']}_Summen.csv"
         ensure_directory(out.parent)
-        export_comparison_to_csv(preview_df, out)
+        preview_df.to_csv(out, index=False, sep=";", decimal=",")
         st.download_button("Download CSV A", out.read_bytes(), out.name, "text/csv")
 
-# ══════════ 2) Optional Model B Comparison ═════════════════════════════════
+# Optional Model B
 up_b = st.file_uploader("Optional: IFC B zum Vergleich", type=["ifc"], key="up_b")
-
-if st.button("2. VERGLEICH erstellen") and up_b and st.session_state.get("model_a"):
-    mA = st.session_state["model_a"]
-    tmp_b = cache.cache_dir / "temp_b.ifc"
+if st.button("2 · Δ-Vergleich erstellen") and up_b and st.session_state.get("model_a"):
+    tmp_b = cache.cache_dir / "model_b.ifc"
     safe_write_bytes(tmp_b, up_b.getbuffer())
-
     with st.spinner("IFC B wird ausgewertet …"):
-        ifc_b = ifcopenshell.open(str(tmp_b))
-        scale_b = auto_scale(ifc_b)
-        groups_b, bqb, psets_b = aggregate(ifc_b, scale_b)
-        df_b = to_dataframe(groups_b, bqb + psets_b)
+        df_b = aggregate(ifcopenshell.open(str(tmp_b)), convert_mm_to_m=convert_mm)
+    st.session_state["model_b"] = {"name": Path(up_b.name).stem, "df": df_b}
+    st.success("Modell B geladen – Vergleich verfügbar!")
 
-    st.session_state["model_b"] = dict(
-        name=Path(up_b.name).stem,
-        groups=groups_b,
-        bq=bqb,
-        psets=psets_b,
-        df=df_b
-    )
-    st.success("Modell B geladen – Delta berechnet!")
-
-# ───────── Enhanced Delta Display & Export ─────────────────────────────────
+# Delta comparison
 if (mB := st.session_state.get("model_b")):
     mA = st.session_state["model_a"]
-    # Prepare dataframes for comparison
-    df_a = mA["df"].reset_index()
-    df_b = mB["df"].reset_index()
-    for col in df_a.columns:
-        if col not in [*df_a.columns[:2]]:
-            df_a[col] = pd.to_numeric(df_a[col], errors='coerce').fillna(0)
-    for col in df_b.columns:
-        if col not in [*df_b.columns[:2]]:
-            df_b[col] = pd.to_numeric(df_b[col], errors='coerce').fillna(0)
+    st.subheader(f"Δ-Vergleich: {mA['name']}  ↔  {mB['name']}")
 
-    merged = compare_models(df_a, df_b)
-    all_cols = [c for c in df_a.columns if c not in [*df_a.columns[:2]]]
-    compare_df = prepare_comparison_data(merged, all_cols)
+    df_a = mA["df"].copy()
+    df_b = mB["df"].copy()
+    num_cols = [c for c in df_a.columns if c not in ("Kategorie", "Gruppe")]
+    for col in num_cols:
+        df_a[col] = pd.to_numeric(df_a[col], errors="coerce").fillna(0)
+        df_b[col] = pd.to_numeric(df_b[col], errors="coerce").fillna(0)
 
-    st.subheader("Vergleichsergebnis")
-    st.dataframe(compare_df)
+    merged     = compare_models(df_a, df_b)
+    compare_df = prepare_comparison_data(merged, num_cols)
+
+    st.dataframe(compare_df, use_container_width=True)
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Δ-Excel herunterladen"):
-            xlsx_path = cache.download_dir / f"Delta_{mA['name']}_vs_{mB['name']}.xlsx"
-            ensure_directory(xlsx_path.parent)
-            export_comparison_to_excel(compare_df, xlsx_path)
+            xlsx = cache.download_dir / f"Delta_{mA['name']}_vs_{mB['name']}.xlsx"
+            ensure_directory(xlsx.parent)
+            export_comparison_to_excel(compare_df, xlsx)
             st.download_button(
-                "Download Δ-Excel", 
-                xlsx_path.read_bytes(), 
-                xlsx_path.name,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                "Download Δ-Excel",
+                xlsx.read_bytes(),
+                xlsx.name,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
     with col2:
-        if st.button("Vergleichs-CSV herunterladen"):
-            comp_out = cache.download_dir / f"Vergleich_{mA['name']}_vs_{mB['name']}.csv"
-            ensure_directory(comp_out.parent)
-            export_comparison_to_csv(compare_df, comp_out)
+        if st.button("Δ-CSV herunterladen"):
+            csv = cache.download_dir / f"Delta_{mA['name']}_vs_{mB['name']}.csv"
+            ensure_directory(csv.parent)
+            export_comparison_to_csv(compare_df, csv)
             st.download_button(
-                "Download Vergleichs-CSV",
-                comp_out.read_bytes(),
-                comp_out.name,
-                "text/csv"
+                "Download Δ-CSV",
+                csv.read_bytes(),
+                csv.name,
+                "text/csv",
             )
 
-# ───────── Reset Button ────────────────────────────────────────────────────
+# Reset
 if st.button("↺ Reset"):
     cache.clear(full=True)
     st.session_state.clear()

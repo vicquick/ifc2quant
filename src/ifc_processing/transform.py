@@ -1,96 +1,161 @@
-from collections import defaultdict
+from typing import List, Dict, Any
 import pandas as pd
-from typing import Dict, List, Tuple
+from ifcopenshell.util.element import get_psets
+
 from .helpers import (
-    categorise, 
-    get_bq, 
-    LENGTH_KEYS, 
-    is_dtm_site, 
-    get_all_psets,
-    DISPLAY_NAMES
+    auto_scale,
+    categorise,
+    ll_am_fields,
+    get_llam_pset,
+    DISPLAY_NAMES,
+    convert_units_mm_to_m,
+    add_mm_suffix,
 )
 
-def aggregate(ifc, scale):
-    """Process IFC elements with fixed columns and dynamic BQ summation"""
-    groups: defaultdict = defaultdict(lambda: defaultdict(float))
-    extra_bq_keys: set = set()
-    pset_keys: set = set()
+NO_SUM_FIELDS = {
+    "Kostengruppe",
+    "Kostengruppe Beschreibung",
+    "Steigung Rampe",
+}
+
+def aggregate_rows(ifc) -> List[Dict[str, Any]]:
+    scale = auto_scale(ifc)
+    valid = {f["key"] for f in ll_am_fields()}
+    rows: List[Dict[str, Any]] = []
 
     for el in ifc.by_type("IfcElement"):
-        cat, grp, thick_m, thick_raw = categorise(el, scale)
-        g = groups[(cat, grp)]
-        q = get_bq(el)
+        cat, grp, thick_m, thick_raw, status, art, kron = categorise(el, scale)
 
-        # Handle DTM sites first
-        if is_dtm_site(el):
-            cat = "Site"
-            grp = "Geländemodell"
-            g = groups[(cat, grp)]
-            all_props = get_all_psets(el)
-            for k, v in all_props.items():
-                if isinstance(v, (int, float, str)):
-                    pset_keys.add(k)
-                    g[k] = v
+        if cat in ("Ramp", "Stair"):
+            grp = cat
+        if cat == "Flächenpflanzung":
+            grp = cat
+
+        pset = get_llam_pset(el)
+        if not pset:
             continue
 
-        # Fixed columns
-        g["area"] += q.get("NetArea", 0) or q.get("GrossArea", 0) or q.get("Area", 0)
-        g["length"] += (q.get("NetLength", 0) or q.get("GrossLength", 0) or q.get("Length", 0)) * scale
-        
-        # Height calculation
-        h = q.get("NetHeight") or q.get("Height") or q.get("GrossHeight")
-        if h:
-            g.setdefault("height_sum", 0)
-            g.setdefault("height_n", 0)
-            g["height_sum"] += h * scale
-            g["height_n"] += 1
+        rows.append(_make_row(cat, grp, thick_m, status, art, kron, "Stückzahl", 1.0))
 
-        # Hedgerow specific
-        if cat == "Hedgerow":
-            hedge_plants = q.get("Count") or q.get("NumberOfPlants") or 0
-            g["plant_count"] += hedge_plants
-            g.setdefault("hedge_objects", 0)
-            g["hedge_objects"] += 1
+        for k, v in pset.items():
+            if k in valid:
+                rows.append(_make_row(cat, grp, thick_m, status, art, kron, k, v))
 
-        # Thickness
-        g["count"] += 1
-        if thick_m is not None:
-            g["thick_m"] = thick_m
-            g["thick_raw"] = thick_raw
+        if cat == "Ramp" and "Steigung Rampe" in pset:
+            rows.append(_make_row(cat, grp, thick_m, status, art, kron, "Steigung Rampe", pset["Steigung Rampe"]))
 
-        # Dynamic BQ summation
-        for k, v in q.items():
-            if isinstance(v, (int, float)):
-                key = k
-                extra_bq_keys.add(key)
-                g[key] += v if k not in LENGTH_KEYS else v * scale
+    return rows
 
-    return groups, sorted(extra_bq_keys), sorted(pset_keys)
+def _make_row(cat, grp, thick_m, status, art, kron, prop, val) -> Dict[str, Any]:
+    try:
+        s = str(val).replace(",", ".").strip()
+        if s.lstrip("-").replace(".", "", 1).isdigit():
+            val = float(s)
+    except:
+        pass
 
-def to_dataframe(groups, bq_keys):
-    """Convert to DataFrame with fixed columns first"""
-    fixed_cols_order = [
-        "area", "length", "thick_m", "thick_raw", 
-        "height_sum", "height_n", "hedge_objects", 
-        "plant_count", "count"
-    ]
-    
-    rows = []
-    for (cat, grp), d in groups.items():
-        row = {
-            "Kategorie": DISPLAY_NAMES.get(cat, cat),
-            "Gruppe": grp,
-            "Fläche_m2": d.get("area", 0),
-            "Länge_m": d.get("length", 0),
-            "Dicke_m": d.get("thick_m", ""),
-            "Dicke_roh_mm": d.get("thick_raw", ""),
-            "Höhe_m": round(d["height_sum"]/d["height_n"], 3) if d.get("height_n", 0) > 0 else "",
-            "Anzahl_Hecken": d.get("hedge_objects", ""),
-            "Anzahl_Pflanzen": d.get("plant_count", ""),
-            "Anzahl": d.get("count", 0),
-            **{k: d.get(k, 0) for k in bq_keys}
-        }
-        rows.append(row)
-    
+    display_grp = grp
+    if cat in ("Ramp", "Stair"):
+        display_grp = DISPLAY_NAMES.get(cat, grp)
+
+    return {
+        "Kategorie": DISPLAY_NAMES.get(cat, cat),
+        "Gruppe": display_grp,
+        "Status": status,
+        "Art": art,
+        "Kronendurchmesser": kron,
+        "Dicke_m": thick_m,
+        "Eigenschaft": prop,
+        "Wert": val,
+    }
+
+def to_long_dataframe(rows: List[Dict[str, Any]]) -> pd.DataFrame:
     df = pd.DataFrame(rows)
-    return df.set_index(["Kategorie", "Gruppe"])
+    cols = [
+        "Kategorie",
+        "Gruppe",
+        "Status",
+        "Art",
+        "Kronendurchmesser",
+        "Dicke_m",
+        "Eigenschaft",
+        "Wert",
+    ]
+    return df[cols].sort_values(cols[:-2]).reset_index(drop=True)
+
+def summarise_special_max(field: str, df: pd.DataFrame) -> pd.DataFrame:
+    subset = df[df["Eigenschaft"] == field].copy()
+    if subset.empty:
+        return None
+
+    subset["Wert"] = pd.to_numeric(subset["Wert"], errors="coerce")
+    subset = subset.dropna(subset=["Wert"])
+
+    out = (
+        subset.groupby([
+            "Kategorie",
+            "Gruppe",
+            "Status",
+            "Art",
+            "Dicke_m",
+        ])["Wert"]
+        .max()
+        .round(2)
+        .reset_index()
+        .rename(columns={"Wert": field})
+    )
+    return out
+
+def summarise(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    num = df[~df["Eigenschaft"].isin(NO_SUM_FIELDS | {"Höhe", "Kronendurchmesser"})].copy()
+    num["Wert"] = pd.to_numeric(num["Wert"], errors="coerce")
+    num = num.dropna(subset=["Wert"])
+
+    wide = (
+        num.pivot_table(
+            index=["Kategorie", "Gruppe", "Status", "Art", "Dicke_m"],
+            columns="Eigenschaft",
+            values="Wert",
+            aggfunc="sum",
+            fill_value=0.0,
+        )
+        .reset_index()
+        .rename_axis(None, axis=1)
+    )
+
+    for field in ("Kronendurchmesser", "Höhe"):
+        summary = summarise_special_max(field, df)
+        if summary is not None:
+            wide = wide.merge(summary, on=["Kategorie", "Gruppe", "Status", "Art", "Dicke_m"], how="left")
+
+    txt = df[df["Eigenschaft"].isin(NO_SUM_FIELDS)]
+    if not txt.empty:
+        txt_p = (
+            txt.pivot_table(
+                index=["Kategorie", "Gruppe", "Status", "Art", "Dicke_m"],
+                columns="Eigenschaft",
+                values="Wert",
+                aggfunc=lambda s: " | ".join(sorted({str(v) for v in s if v})),
+                fill_value="",
+            )
+            .reset_index()
+            .rename_axis(None, axis=1)
+        )
+        wide = wide.merge(txt_p, on=["Kategorie", "Gruppe", "Status", "Art", "Dicke_m"], how="left")
+
+    return wide
+
+def aggregate(ifc, convert_mm_to_m: bool = True) -> pd.DataFrame:
+    rows = aggregate_rows(ifc)
+    df_long = to_long_dataframe(rows)
+    df_wide = summarise(df_long)
+
+    if convert_mm_to_m:
+        df_wide = convert_units_mm_to_m(df_wide)
+    else:
+        df_wide = add_mm_suffix(df_wide)
+
+    return df_wide

@@ -52,6 +52,9 @@ def aggregate_rows(ifc) -> List[Dict[str, Any]]:
 
         rows.append(_make_row(cat, grp, thick_m, status, art, kron, "Stückzahl", 1.0))
 
+        rows.append(_make_row(cat, grp, thick_m, status, art, kron, "Status", status))
+        rows.append(_make_row(cat, grp, thick_m, status, art, kron, "Art", art))
+
         if cat == "Ramp" and "Steigung Rampe" in pset:
             rows.append(_make_row(cat, grp, thick_m, status, art, kron, "Steigung Rampe", pset["Steigung Rampe"]))
 
@@ -131,7 +134,7 @@ def summarise(df: pd.DataFrame) -> pd.DataFrame:
     )
     
     # Process all numeric fields
-    num = df[~df["is_no_sum"] & ~df["Eigenschaft"].isin({"Höhe", "Kronendurchmesser"})].copy()
+    num = df[~df["is_no_sum"] & ~df["Eigenschaft"].isin({"Höhe", "Kronendurchmesser", "Status", "Art"})].copy()
     num["Wert"] = pd.to_numeric(num["Wert"], errors="coerce")
     num = num.dropna(subset=["Wert"])
 

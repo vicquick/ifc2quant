@@ -40,15 +40,23 @@ if (mA := st.session_state.get("model_a")):
     cats = sorted(mA["df"]["Kategorie"].unique())
     sel_cat = st.multiselect("Kategorien filtern", cats, default=cats)
 
+    # Only exclude index columns; keep Status and Art
     all_cols = [c for c in mA["df"].columns if c not in ("Kategorie", "Gruppe")]
+
     sel_cols = st.multiselect("Spalten wählen", all_cols, default=all_cols)
 
     preview_df = (
-        mA["df"]
-        .query("Kategorie in @sel_cat")[["Kategorie", "Gruppe", *sel_cols]]
-        .copy()
+    mA["df"]
+    .query("Kategorie in @sel_cat")
+    .copy()
     )
-    preview_df = preview_df.dropna(subset=sel_cols, how="all")
+
+    # Always include these fixed identifier columns
+    fixed_cols = ["Kategorie", "Gruppe", "Status", "Art"]
+    selected_cols = [col for col in fixed_cols if col in mA["df"].columns] + [c for c in sel_cols if c not in fixed_cols]
+
+    preview_df = preview_df[selected_cols]
+
 
     text_cols = ["Status", "Art", "Gruppe", "Kategorie"]
 
@@ -57,10 +65,12 @@ if (mA := st.session_state.get("model_a")):
             preview_df[col] = preview_df[col].astype(str).replace("nan", "")
             continue
 
-        try:
-            preview_df[col] = pd.to_numeric(preview_df[col], errors="coerce")
-        except:
-            continue
+        if col not in text_cols:
+            try:
+                preview_df[col] = pd.to_numeric(preview_df[col], errors="coerce")
+            except:
+                continue
+
 
         if col in ("Stückzahl", "Kostengruppe", "Anzahl Stufen", "Anzahl Pflanzen"):
             preview_df[col] = preview_df[col].apply(

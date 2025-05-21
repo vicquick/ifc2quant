@@ -6,7 +6,7 @@ from ifc_processing.aggregate_rows_custom import _make_row
 from ifc_processing.transform import (
     aggregate_by_mapping_per_class,
     simplify_text_fields,
-    format_german_display,
+    #format_german_display,
 )
 
 #locale.setlocale(locale.LC_NUMERIC, "de_DE.UTF-8")

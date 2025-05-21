@@ -6,7 +6,7 @@ from ifc_processing.aggregate_rows_custom import _make_row
 from ifc_processing.transform import (
     aggregate_by_mapping_per_class,
     simplify_text_fields,
-    #format_german_display,
+    format_display,
 )
 
 #locale.setlocale(locale.LC_NUMERIC, "de_DE.UTF-8")
@@ -84,7 +84,7 @@ def render_preview_tab():
 
         st.session_state["df_final"] = df_final
 
-        display_df = format_german_display(df_final, never_convert_fields)
+        display_df = format_display(df_final, never_convert_fields)
         st.dataframe(display_df, use_container_width=True)
 
         csv_data = df_final.to_csv(index=False).encode("utf-8")

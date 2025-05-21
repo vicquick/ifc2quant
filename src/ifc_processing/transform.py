@@ -115,7 +115,7 @@ def simplify_text_value(x):
 
 
 
-def format_german_display(df: pd.DataFrame, never_convert_fields: set) -> pd.DataFrame:
+def format_display(df: pd.DataFrame, style: str = "de", never_convert_fields: set = set()) -> pd.DataFrame:
     display_df = df.copy()
     for col in display_df.columns:
         if col in never_convert_fields:
@@ -125,8 +125,12 @@ def format_german_display(df: pd.DataFrame, never_convert_fields: set) -> pd.Dat
                 display_df[col] = display_df[col].astype("Int64")
             else:
                 display_df[col] = display_df[col].round(2)
-                display_df[col] = display_df[col].apply(
-                    lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                )
+                if style == "de":
+                    display_df[col] = display_df[col].apply(
+                        lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    )
+                elif style == "en":
+                    display_df[col] = display_df[col].apply(lambda x: f"{x:,.2f}")
     return display_df
+
 

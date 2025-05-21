@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-#import locale
 from ifc_processing.categorise_with_mapping import categorise_with_mapping
 from ifc_processing.aggregate_rows_custom import _make_row
 from ifc_processing.transform import (
@@ -8,8 +7,6 @@ from ifc_processing.transform import (
     simplify_text_fields,
     format_display,
 )
-
-#locale.setlocale(locale.LC_NUMERIC, "de_DE.UTF-8")
 
 def render_preview_tab():
     if "ifc_model" not in st.session_state or "active_classes" not in st.session_state:
@@ -66,13 +63,12 @@ def render_preview_tab():
         df = pd.DataFrame(preview_rows)
         df_final = aggregate_by_mapping_per_class(df, mapping)
         df_final = simplify_text_fields(df_final, mapping)
-        
+
         for col in ["Status", "Art"]:
             is_used = any(col in rules.get("text", []) or col in rules.get("sum", []) for rules in mapping["rules"].values())
             if col in df_final.columns and not is_used:
                 if df_final[col].replace("", pd.NA).isna().all():
                     df_final.drop(columns=[col], inplace=True)
-
 
         for col in df_final.select_dtypes(include="object").columns:
             df_final[col] = df_final[col].astype(str)
@@ -81,10 +77,19 @@ def render_preview_tab():
             df_final["Stückzahl"] = pd.to_numeric(df_final["Stückzahl"], errors="coerce").fillna(0).astype("Int64")
 
         df_final.fillna("", inplace=True)
-
         st.session_state["df_final"] = df_final
 
-        display_df = format_display(df_final, never_convert_fields)
+        # 🔘 Format toggle UI
+        format_style = st.radio(
+            "Zahlenformat wählen:",
+            options=["🇩🇪 Deutsch (1.234,56)", "🇬🇧 English (1,234.56)"],
+            index=0,
+            horizontal=True,
+        )
+        style_key = "de" if "Deutsch" in format_style else "en"
+
+        # Apply format style
+        display_df = format_display(df_final, style=style_key, never_convert_fields=never_convert_fields)
         st.dataframe(display_df, use_container_width=True)
 
         csv_data = df_final.to_csv(index=False).encode("utf-8")

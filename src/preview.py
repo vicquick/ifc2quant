@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import locale
+#import locale
 from ifc_processing.categorise_with_mapping import categorise_with_mapping
 from ifc_processing.aggregate_rows_custom import _make_row
 from ifc_processing.transform import (
@@ -9,7 +9,7 @@ from ifc_processing.transform import (
     format_german_display,
 )
 
-locale.setlocale(locale.LC_NUMERIC, "de_DE.UTF-8")
+#locale.setlocale(locale.LC_NUMERIC, "de_DE.UTF-8")
 
 def render_preview_tab():
     if "ifc_model" not in st.session_state or "active_classes" not in st.session_state:

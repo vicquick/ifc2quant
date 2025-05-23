@@ -55,9 +55,9 @@ def render_preview_tab():
         for k, v in props.items():
             if k in never_convert_fields:
                 v = str(v)
-            preview_rows.append(_make_row(cat, group_label, art, status, k, v, never_convert_fields))
+            preview_rows.append(_make_row(cat, group_label, art, status, k, v, never_convert_fields) | {"OriginalClass": el.is_a()})
 
-        preview_rows.append(_make_row(cat, group_label, art, status, "Stückzahl", 1, never_convert_fields))
+        preview_rows.append(_make_row(cat, group_label, art, status, "Stückzahl", 1, never_convert_fields) | {"OriginalClass": el.is_a()})
 
     if preview_rows:
         df = pd.DataFrame(preview_rows)

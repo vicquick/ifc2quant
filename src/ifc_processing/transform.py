@@ -11,9 +11,9 @@ def ordered_text_join_debug(x, label=None):
 def aggregate_by_mapping_per_class(df: pd.DataFrame, mapping: Dict[str, Any]) -> pd.DataFrame:
     grouped_dfs = []
 
-    for ifc_class in df["Kategorie"].unique():
+    for ifc_class in df["OriginalClass"].unique():
         print(f"\n[DEBUG] Processing class: {ifc_class}")
-        class_df = df[df["Kategorie"] == ifc_class].copy()
+        class_df = df[df["OriginalClass"] == ifc_class].copy()
         rules = mapping.get("rules", {}).get(ifc_class, {})
         group_cols = ["Kategorie", "Gruppe", "Art", "Status"]
 

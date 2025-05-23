@@ -1,15 +1,21 @@
 import streamlit as st
+from translations import translations
 
-st.set_page_config(page_title="IFC Mengenauswertung")
-st.title("📐 IFC Mengenauswertung")
+
+# Load language from session or default to English
+lang = st.session_state.get("lang", "en")
+t = translations[lang]
+
+st.set_page_config(page_title=t["app_title"])
+st.title(f"📐 {t['app_title']}")
 st.caption("powered by Streamlit + IfcOpenShell")
 
-
+# Translate tab names dynamically
 tab_upload, tab_mapping, tab_preview, tab_download = st.tabs([
-    "📂 Upload",
-    "🛠️ Mapping",
-    "📊 Vorschau",
-    "📥 Download"
+    f"📂 {t['upload_tab']}",
+    f"🛠️ {t['mapping_tab']}",
+    f"📊 {t['preview_tab']}",
+    f"📥 {t['download_tab']}"
 ])
 
 with tab_upload:

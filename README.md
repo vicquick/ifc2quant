@@ -76,7 +76,7 @@ Use the tabs to:
 
 💾 Save your current mapping configuration as .json
 
-📤 Export quantity results to .csv or .xlsx (including comparison if two models are loaded)
+📤 Export quantity results to .csv or .xlsx
 
 ♻️ Reset session state to load new models or restart mapping
 

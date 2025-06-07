@@ -1,6 +1,7 @@
 import streamlit as st
 import ifcopenshell
 import json
+import pandas as pd
 from pathlib import Path
 from ifc_processing.pset_reader import read_psets_from_model, flatten_psets
 from translations import translations
@@ -10,25 +11,21 @@ def render_upload_tab():
     if "lang" not in st.session_state:
         st.session_state["lang"] = "en"
 
-    # Show toggle with the current state as index
+    # Language selector
     new_lang = st.radio(
         "Language / Sprache",
         ["en", "de"],
         index=["en", "de"].index(st.session_state["lang"]),
         horizontal=True
     )
-
-    # If language changed, store and rerun immediately
     if new_lang != st.session_state["lang"]:
         st.session_state["lang"] = new_lang
-        st.rerun() 
+        st.rerun()
 
-    # Load translations using the updated session state
     t = translations[st.session_state["lang"]]
 
-
+    # IFC Upload
     uploaded_ifc = st.file_uploader(t["upload_prompt"], type=["ifc"])
-
     if uploaded_ifc:
         project_root = Path(__file__).resolve().parent.parent
         cache_dir = project_root / "cache"
@@ -37,7 +34,6 @@ def render_upload_tab():
         ifc_path = cache_dir / uploaded_ifc.name
         ifc_path.write_bytes(uploaded_ifc.getbuffer())
         st.write(f"📁 IFC → {ifc_path}")
-
         st.session_state["ifc_filename"] = ifc_path.stem
 
         ifc_model = ifcopenshell.open(str(ifc_path))
@@ -47,13 +43,30 @@ def render_upload_tab():
             psets = read_psets_from_model(ifc_model)
             flat_data = flatten_psets(psets)
 
+        # Store dict version
         st.session_state["flat_data"] = flat_data
 
+        # Also store DataFrame version with OriginalClass etc.
+        records = []
+        for guid, props in flat_data.items():
+            el = ifc_model.by_id(guid)
+            props = props.copy()
+            props["guid"] = guid
+            props["OriginalClass"] = el.is_a()
+            props["GlobalId"] = el.GlobalId
+            records.append(props)
+
+        df_flat = pd.DataFrame(records)
+        st.session_state["flat_df"] = df_flat
+
+        # Set all_classes and available keys
         all_classes = sorted({el.is_a() for el in ifc_model.by_type("IfcElement")})
         class_keys_map = {
-            cls: sorted({k for gid, props in flat_data.items()
-                         if ifc_model.by_id(gid).is_a() == cls
-                         for k in props if not k.lower().startswith("type")})
+            cls: sorted({
+                k for gid, props in flat_data.items()
+                if ifc_model.by_id(gid).is_a() == cls
+                for k in props if not k.lower().startswith("type")
+            })
             for cls in all_classes
         }
         st.session_state["all_classes"] = all_classes
@@ -61,6 +74,7 @@ def render_upload_tab():
 
         st.success(t["upload_success"])
 
+    # JSON Mapping Upload
     uploaded_json = st.file_uploader(t["upload_mapping_prompt"], type=["json"], key="map_json")
     if uploaded_json:
         try:
@@ -83,6 +97,7 @@ def render_upload_tab():
         except Exception as e:
             st.error(t["mapping_folder_error"].format(error=e))
 
+    # JSON Mapping from local folder
     project_root = Path(__file__).resolve().parent.parent
     mappings_path = project_root / "mappings"
     mappings_path.mkdir(exist_ok=True)

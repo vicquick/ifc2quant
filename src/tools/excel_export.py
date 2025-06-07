@@ -45,7 +45,7 @@ def format_diff_table_with_styles(df: pd.DataFrame, lang="de") -> bytes:
 
     styled_df = df.style.apply(style_row, axis=1)
 
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         styled_df.to_excel(writer, sheet_name=t.get("comparison_tab_title", "Comparison"), index=False)
 
     return output.getvalue()

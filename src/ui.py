@@ -16,14 +16,13 @@ st.set_page_config(page_title=t["app_title"])
 st.title(f"📐 {t['app_title']}")
 st.caption("powered by Streamlit + IfcOpenShell")
 
-# Create tabs (now 6)
+# Create tabs (now 5)
 (
     tab_upload,
     tab_mapping,
     tab_preview,
     tab_download,
     tab_comparison,
-    tab_viewer,
 ) = st.tabs([
     f"📂 {t['upload_tab']}",
     f"🛠️ {t['mapping_tab']}",

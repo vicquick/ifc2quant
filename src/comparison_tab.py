@@ -16,22 +16,22 @@ def render_comparison_tab():
 
     st.header("🔁 " + t.get("comparison_tab_title", "Compare with Second IFC Model"))
 
-    # Model A from session
+    model_a = st.session_state.get("ifc_model")
     model_a_name = st.session_state.get("ifc_filename")
-    df_a = st.session_state.get("flat_df")
-    if df_a is None or model_a_name is None:
-        st.warning("⚠️ " + t.get("comparison_model_a_missing", "Please upload and map Model A first."))
-        return
 
-    # Prepare live mapping
+    # 🔄 Pick up live mapping from session state if modified in mapping tab
     live_mapping = st.session_state.get("loaded_mapping", {}).copy()
     if "category_mapping" in st.session_state:
         live_mapping["categories"] = st.session_state["category_mapping"]
     if "class_rules" in st.session_state:
         live_mapping["rules"] = st.session_state["class_rules"]
-    mapping = live_mapping
 
-    # Upload Model B
+    mapping = live_mapping  # use updated version
+
+    if model_a is None or model_a_name is None:
+        st.warning("⚠️ " + t.get("comparison_model_a_missing", "Please upload and map Model A first."))
+        return
+
     uploaded_b = st.file_uploader("📂 " + t.get("comparison_upload_model_b", "Upload Model B"), type="ifc")
 
     if uploaded_b:
@@ -41,33 +41,17 @@ def render_comparison_tab():
         model_b_path.write_bytes(uploaded_b.getbuffer())
         model_b = ifcopenshell.open(str(model_b_path))
 
-        st.success(f"✅ {t.get('comparison_model_b_loaded', 'Model B')} '{uploaded_b.name}' {t.get('upload_success', 'loaded.')}")
+        st.success(f"✅ {t.get('comparison_model_b_loaded', 'Model B')} '{uploaded_b.name}' {t.get('upload_success', 'loaded.')}" )
 
-        # 🧱 Read Psets + Flatten → Create flat_df_b
+        # 🔧 Build keys from Model B
         psets = read_psets_from_model(model_b)
         flat_data = flatten_psets(psets)
-
-        records = []
-        for guid, props in flat_data.items():
-            el = model_b.by_id(guid)
-            props = props.copy()
-            props["guid"] = guid
-            props["OriginalClass"] = el.is_a()
-            props["GlobalId"] = el.GlobalId
-            records.append(props)
-        df_b = pd.DataFrame(records)
-
-        st.session_state["flat_df_b"] = df_b
-
-        # 🎛️ Class detection + keys from DataFrame
-        all_classes = sorted(df_b["OriginalClass"].dropna().unique())
+        all_classes = sorted({el.is_a() for el in model_b.by_type("IfcElement")})
         class_keys_map_b = {
-            cls: sorted([
-                col for col in df_b.columns
-                if col not in {"guid", "OriginalClass", "GlobalId"}
-                and not col.lower().startswith("type")
-                and not df_b[df_b["OriginalClass"] == cls][col].isnull().all()
-            ])
+            cls: sorted({
+                k for gid, props in flat_data.items() if props.get("type") == cls
+                for k in props if not k.lower().startswith("type")
+            })
             for cls in all_classes
         }
 
@@ -101,7 +85,7 @@ def render_comparison_tab():
         derived_mapping_b = {"rules": {cls: mapping_b[cls] for cls in active_classes}}
 
         # 🔍 Run comparison
-        diff_df = prepare_comparison(df_a, df_b, mapping, derived_mapping_b)
+        diff_df = prepare_comparison(model_a, model_b, mapping, derived_mapping_b)
 
         st.subheader("🔎 " + t.get("preview_tab", "Preview"))
 

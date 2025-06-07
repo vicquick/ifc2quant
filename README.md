@@ -29,9 +29,7 @@ ifc2quant/
 ├── LICENSE.md                     # License file (Open-GPL)
 ├── README.md                      # Project overview and usage guide
 ├── requirements.txt               # Python package dependencies
-│
 ├── mappings/                      # Saved user mapping configurations (.json)
-│
 └── src/                           # Main application source
     ├── ui.py                      # Streamlit entrypoint with all tab navigation
     ├── upload.py                  # IFC upload + preprocessing
@@ -41,11 +39,9 @@ ifc2quant/
     ├── rules.py                   # Rule block generation for each class
     ├── translations.py            # Multilingual label support
     ├── comparison_tab.py          # UI logic for model vs model comparison
-    │
     ├── cache/
     │   ├── manager.py             # Handles in-session cache and uploaded file management
     │   └── __init__.py
-    │
     ├── ifc_processing/            # Core IFC model transformation logic
     │   ├── aggregate_rows_custom.py  # Aggregation engine for quantities
     │   ├── apply_mapping.py          # Applies saved user mappings
@@ -54,7 +50,6 @@ ifc2quant/
     │   ├── render_rule_block.py      # UI logic to render rule components
     │   ├── transform.py              # Final transformation pipeline
     │   └── __init__.py
-    │
     └── tools/                    # Comparison engine utilities
         ├── comparison_logic.py    # Combines aggregation + text change analysis
         ├── diff.py                # Prepares simplified difference tables

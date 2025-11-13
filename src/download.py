@@ -44,7 +44,7 @@ def render_download_tab():
         suffix = "quantity_export" if lang == "en" else "Mengenauswertung"
 
         csv_bytes = io.BytesIO()
-        df.to_csv(csv_bytes, sep=";", index=False, line_terminator='\r\n')
+        df.to_csv(csv_bytes, sep=";", index=False, lineterminator='\r\n')
         st.download_button(
             label="📄 " + t.get("download_csv", "Download CSV"),
             data=csv_bytes.getvalue(),
@@ -75,3 +75,4 @@ def render_download_tab():
                     st.warning(f"⚠️ {t.get('delete_failed', 'Could not delete file')}: {file.name} – {e}")
 
         st.success("🧹 " + t.get("reset_success", "Reset complete. Please reload the page."))
+

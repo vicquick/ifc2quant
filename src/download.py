@@ -44,7 +44,7 @@ def render_download_tab():
         suffix = "quantity_export" if lang == "en" else "Mengenauswertung"
 
         csv_bytes = io.BytesIO()
-        df.to_csv(csv_bytes, sep=";", index=False)
+        df.to_csv(csv_bytes, sep=";", index=False, line_terminator='\r\n')
         st.download_button(
             label="📄 " + t.get("download_csv", "Download CSV"),
             data=csv_bytes.getvalue(),
